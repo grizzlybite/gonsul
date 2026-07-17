@@ -1,10 +1,11 @@
 package app
 
 import (
-	"github.com/miniclip/gonsul/internal/config"
-	"github.com/miniclip/gonsul/tests/mocks"
+	"github.com/grizzlybite/gonsul/internal/config"
+	"github.com/grizzlybite/gonsul/tests/mocks"
 
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/mock"
 	"os"
 	"testing"
 )
@@ -62,9 +63,10 @@ func TestApplication_Start(t *testing.T) {
 		switch test.Strategy {
 		case config.StrategyDry, config.StrategyOnce:
 			// Assert RunOnce
-			once.On("RunOnce").Return()
+			once.On("RunOnce", mock.Anything).Return(nil)
 			// Start application
-			application.Start()
+			err := application.Start()
+			Expect(err).NotTo(HaveOccurred())
 			// Validate expectations
 			Expect(cfg.AssertExpectations(t)).To(BeTrue(), "Assert GetStrategy")
 			Expect(cfg.AssertNumberOfCalls(t, "GetStrategy", 1))
@@ -72,9 +74,10 @@ func TestApplication_Start(t *testing.T) {
 			Expect(once.AssertNumberOfCalls(t, "RunOnce", 1))
 		case config.StrategyHook:
 			// Assert RunOnce
-			hook.On("RunHook").Return()
+			hook.On("RunHook", mock.Anything).Return(nil)
 			// Start application
-			application.Start()
+			err := application.Start()
+			Expect(err).NotTo(HaveOccurred())
 			// Validate expectations
 			Expect(cfg.AssertExpectations(t)).To(BeTrue(), "Assert GetStrategy")
 			Expect(cfg.AssertNumberOfCalls(t, "GetStrategy", 1))
@@ -82,9 +85,10 @@ func TestApplication_Start(t *testing.T) {
 			Expect(hook.AssertNumberOfCalls(t, "RunHook", 1))
 		case config.StrategyPoll:
 			// Assert RunOnce
-			poll.On("RunPoll").Return()
+			poll.On("RunPoll", mock.Anything).Return(nil)
 			// Start application
-			application.Start()
+			err := application.Start()
+			Expect(err).NotTo(HaveOccurred())
 			// Validate expectations
 			Expect(cfg.AssertExpectations(t)).To(BeTrue(), "Assert GetStrategy")
 			Expect(cfg.AssertNumberOfCalls(t, "GetStrategy", 1))
@@ -92,7 +96,8 @@ func TestApplication_Start(t *testing.T) {
 			Expect(poll.AssertNumberOfCalls(t, "RunPoll", 1))
 		default:
 			// Start application (On this test case, we need to make sure none of the application modes run)
-			application.Start()
+			err := application.Start()
+			Expect(err).NotTo(HaveOccurred())
 			// Validate expectations
 			Expect(cfg.AssertExpectations(t)).To(BeTrue(), "Assert GetStrategy")
 			Expect(cfg.AssertNumberOfCalls(t, "GetStrategy", 1))

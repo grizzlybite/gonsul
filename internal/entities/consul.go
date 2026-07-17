@@ -21,5 +21,3 @@ type ConsulTxnKV struct {
 	Key   *string `json:"Key"`
 	Value *string `json:"Value,omitempty"`
 }
-
-

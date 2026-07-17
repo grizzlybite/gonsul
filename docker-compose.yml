@@ -1,8 +1,16 @@
-version: '3.5'
 services:
   consul:
-    image: consul:1.5.1
+    image: hashicorp/consul:1.22.5
+    command:
+      - agent
+      - -dev
+      - -client=0.0.0.0
+      - -ui
     ports:
-      - "8301:8301"
       - "8500:8500"
       - "8600:8600/udp"
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 5s
+      timeout: 3s
+      retries: 12

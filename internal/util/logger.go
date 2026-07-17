@@ -32,14 +32,14 @@ type ILogger interface {
 // logger is our ILogger interface concrete implementation. It's used throughout the
 // application to print/output messages to stdout
 type logger struct {
-	level 		int
-	messages 	[]string
+	level    int
+	messages []string
 }
 
 // NewLogger is our logger constructor
 func NewLogger(level int) ILogger {
 	return &logger{
-		level: level,
+		level:    level,
 		messages: []string{},
 	}
 }

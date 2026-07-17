@@ -1,19 +1,21 @@
-ARG GONSUL=/go/src/github.com/miniclip/gonsul
+FROM golang:1.26.5-alpine AS build
+ARG VERSION=dev
+ARG BUILD_DATE=unknown
 
-FROM golang:1.14.3-alpine3.11 as build
-ARG GONSUL
+RUN apk --no-cache add build-base git
 
-RUN apk --no-cache add build-base dep git
-RUN mkdir -p $GONSUL
-WORKDIR $GONSUL
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
 COPY . .
-RUN make
+RUN make build VERSION=${VERSION} BUILD_DATE=${BUILD_DATE}
 
-FROM alpine
-ARG GONSUL
+FROM alpine:3.22
 
-COPY --from=build $GONSUL/bin/gonsul /usr/bin/gonsul
-RUN adduser -D gonsul
+RUN apk --no-cache add ca-certificates && \
+    adduser -D -H -s /sbin/nologin gonsul
+COPY --from=build /src/bin/gonsul /usr/bin/gonsul
+
 USER gonsul
-
-ENTRYPOINT [ "/usr/bin/gonsul" ]
+ENTRYPOINT ["/usr/bin/gonsul"]

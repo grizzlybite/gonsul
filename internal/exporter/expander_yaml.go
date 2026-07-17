@@ -1,37 +1,40 @@
 package exporter
 
 import (
-	"github.com/miniclip/gonsul/internal/util"
-
-	"errors"
 	"fmt"
+
+	"github.com/grizzlybite/gonsul/internal/util"
 	"gopkg.in/yaml.v3"
 )
 
-// validateJSON ...
-func (e *exporter) validateYAML(path string, yamlData string) map[string]interface{} {
-	// Create "generic" yaml struct
-	var arbitraryYAML map[string]interface{}
+func (e *exporter) validateYAML(path string, data string) (map[string]interface{}, error) {
+	var document interface{}
 
-	// Decode data into "generic"
-	err := yaml.Unmarshal([]byte(yamlData), &arbitraryYAML)
+	err := yaml.Unmarshal([]byte(data), &document)
 
 	// Decoded YAML ok?
 	if err != nil {
-		util.ExitError(
-			errors.New(fmt.Sprintf("error parsing YAML file: %s with Message: %s", path, err.Error())),
-			util.ErrorFailedJsonDecode,
-			e.logger,
-		)
+		return nil, fmt.Errorf("error parsing YAML file: %s with Message: %s", path, err.Error())
 	}
 
-	return arbitraryYAML
+	documentMap, ok := document.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("error parsing YAML file: %s with Message: root document must be an object", path)
+	}
+
+	return documentMap, nil
 }
 
-// expandJSON ...
-func (e *exporter) expandYAML(path string, jsonData string, localData map[string]string) {
-	arbitraryYAML := e.validateYAML(path, jsonData)
+func (e *exporter) expandYAML(path string, data string, localData map[string]string) error {
+	documentMap, err := e.validateYAML(path, data)
+	if err != nil {
+		return util.NewGonsulError(err, util.ErrorFailedJsonDecode)
+	}
 
-	// Iterate over our "generic" JSON structure
-	e.traverseMap(path, arbitraryYAML, localData)
+	// Flatten and serialize the decoded YAML document.
+	if err := e.expandDocument(path, documentMap, localData); err != nil {
+		return util.NewGonsulError(err, util.ErrorFailedJsonEncode)
+	}
+
+	return nil
 }

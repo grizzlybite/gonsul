@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/miniclip/gonsul/app"
-	"github.com/miniclip/gonsul/internal/config"
-	"github.com/miniclip/gonsul/internal/exporter"
-	"github.com/miniclip/gonsul/internal/importer"
-	"github.com/miniclip/gonsul/internal/util"
+	"github.com/grizzlybite/gonsul/app"
+	"github.com/grizzlybite/gonsul/internal/config"
+	"github.com/grizzlybite/gonsul/internal/exporter"
+	"github.com/grizzlybite/gonsul/internal/importer"
+	"github.com/grizzlybite/gonsul/internal/util"
 
 	"fmt"
 	"net/http"
@@ -14,21 +14,16 @@ import (
 )
 
 func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			var recoveredError = r.(util.GonsulError)
-			os.Exit(recoveredError.Code)
-		}
-	}()
-
-	start()
+	os.Exit(run())
 }
 
-func start() {
+func run() int {
 	// Build our configuration
 	cfg, err := config.NewConfig()
 	if err != nil {
-		util.ExitError(err, util.ErrorBadParams, util.NewLogger(0))
+		logger := util.NewLogger(0)
+		logger.PrintError(err.Error())
+		return util.ErrorBadParams
 	}
 
 	// Build our logger
@@ -38,7 +33,7 @@ func start() {
 	if cfg.IsShowVersion() {
 		fmt.Println("Gonsul version: " + app.Version)
 		fmt.Println("Build date: " + app.BuildDate)
-		return
+		return 0
 	}
 
 	// Build all dependencies for our application
@@ -55,8 +50,12 @@ func start() {
 	application := app.NewApplication(cfg, once, hook, poll, sigChannel)
 
 	// Start our application
-	application.Start()
+	if err := application.Start(); err != nil {
+		logger.PrintError(err.Error())
+		return util.ErrorCode(err, util.ErrorFailedConsulConnection)
+	}
 
 	// We're still here, all went well, good bye
 	logger.PrintInfo("Quitting... bye.")
+	return 0
 }

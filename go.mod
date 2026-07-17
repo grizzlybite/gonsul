@@ -1,50 +1,54 @@
-module github.com/miniclip/gonsul
+module github.com/grizzlybite/gonsul
 
-go 1.16
+go 1.26
+
+toolchain go1.26.5
 
 require (
-	github.com/alcortesm/tgz v0.0.0-20161220082320-9c5fe88206d7 // indirect
-	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
-	github.com/armon/consul-api v0.0.0-20180202201655-eb2c6b5be1b6 // indirect
-	github.com/bketelsen/crypt v0.0.3-0.20200106085610-5cbc8cc4026c // indirect
-	github.com/cbroglie/mustache v1.0.1
-	github.com/coreos/bbolt v1.3.2 // indirect
-	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e // indirect
-	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
-	github.com/emirpasic/gods v1.9.0 // indirect
-	github.com/gliderlabs/ssh v0.3.2 // indirect
-	github.com/gorilla/websocket v1.4.2 // indirect
-	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0 // indirect
-	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
-	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
-	github.com/jonboulle/clockwork v0.1.0 // indirect
-	github.com/kevinburke/ssh_config v0.0.0-20180317175531-9fc7bb800b55 // indirect
-	github.com/mattn/go-runewidth v0.0.2 // indirect
+	github.com/cbroglie/mustache v1.4.0
+	github.com/go-git/go-git/v5 v5.19.1
 	github.com/namsral/flag v1.7.4-pre
-	github.com/olekukonko/tablewriter v0.0.0-20180506121414-d4647c9c7a84
-	github.com/onsi/ginkgo v1.16.1 // indirect
-	github.com/onsi/gomega v1.10.1
-	github.com/pelletier/go-buffruneio v0.2.0 // indirect
-	github.com/prometheus/tsdb v0.7.1 // indirect
-	github.com/sergi/go-diff v1.0.0 // indirect
-	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
-	github.com/smartystreets/goconvey v1.6.4 // indirect
-	github.com/soheilhy/cmux v0.1.4 // indirect
-	github.com/src-d/gcfg v1.3.0 // indirect
-	github.com/stretchr/testify v1.7.0
-	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
-	github.com/ugorji/go v1.1.4 // indirect
-	github.com/vektra/mockery/v2 v2.10.0 // indirect
-	github.com/xanzy/ssh-agent v0.1.0 // indirect
-	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
-	github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77 // indirect
-	github.com/zenazn/goji v0.9.0 // indirect
-	go.etcd.io/bbolt v1.3.2 // indirect
-	gopkg.in/resty.v1 v1.12.0 // indirect
-	gopkg.in/src-d/go-billy.v4 v4.2.0 // indirect
-	gopkg.in/src-d/go-git-fixtures.v3 v3.5.0 // indirect
-	gopkg.in/src-d/go-git.v4 v4.4.1
+	github.com/olekukonko/tablewriter v1.1.4
+	github.com/onsi/gomega v1.42.1
+	github.com/stretchr/testify v1.11.1
+	gopkg.in/yaml.v3 v3.0.1
+)
+
+require (
+	dario.cat/mergo v1.0.0 // indirect
+	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/ProtonMail/go-crypto v1.1.6 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/clipperhouse/displaywidth v0.10.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.6.0 // indirect
+	github.com/cloudflare/circl v1.6.3 // indirect
+	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/emirpasic/gods v1.18.1 // indirect
+	github.com/fatih/color v1.18.0 // indirect
+	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
+	github.com/go-git/go-billy/v5 v5.9.0 // indirect
+	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
+	github.com/kevinburke/ssh_config v1.2.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
+	github.com/olekukonko/errors v1.2.0 // indirect
+	github.com/olekukonko/ll v0.1.6 // indirect
+	github.com/pjbgf/sha1cd v0.6.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
+	github.com/skeema/knownhosts v1.3.1 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
+	github.com/xanzy/ssh-agent v0.3.3 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )

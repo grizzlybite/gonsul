@@ -1,18 +1,17 @@
 package exporter
 
 import (
-	"github.com/miniclip/gonsul/internal/util"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
-	"gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/plumbing"
-	"gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
-
-	"errors"
 	"fmt"
+
+	"github.com/grizzlybite/gonsul/internal/util"
 )
 
 // downloadRepo ...
-func (e *exporter) downloadRepo() {
+func (e *exporter) downloadRepo() error {
 	// Get some variables
 	var (
 		fileSystemPath = e.config.GetRepoRootDir()
@@ -35,16 +34,16 @@ func (e *exporter) downloadRepo() {
 	})
 
 	if err != nil {
-		e.logger.PrintDebug(fmt.Sprintf("REPO: failed clone (%s), trying to open directory", err.Error()))
+		cloneError := util.RedactSensitive(err.Error(), e.config.GetRepoURL(), e.config.GetRepoSSHKey())
+		e.logger.PrintDebug(fmt.Sprintf("REPO: failed clone (%s), trying to open directory", cloneError))
 
 		// Cloning failed, most probably due to directory already cloned, moving to Open Dir
 		repo, err = git.PlainOpen(e.config.GetRepoRootDir())
 
 		if err != nil {
-			util.ExitError(
-				errors.New("REPO: failed clone and directory is not a git repo, try cleaning dir"),
+			return util.NewGonsulError(
+				fmt.Errorf("REPO: failed clone and directory is not a git repo, try cleaning dir"),
 				util.ErrorFailedCloning,
-				e.logger,
 			)
 		}
 
@@ -52,37 +51,41 @@ func (e *exporter) downloadRepo() {
 	}
 
 	// We're still here, let's try to checkout required branch
-	e.tryCheckout(repo, &auth)
+	return e.tryCheckout(repo, &auth)
 }
 
 // tryCheckout ...
-func (e *exporter) tryCheckout(repo *git.Repository, auth *ssh.AuthMethod) {
+func (e *exporter) tryCheckout(repo *git.Repository, auth *ssh.AuthMethod) error {
 	// Initiate our worktree
 	workTree, err := repo.Worktree()
-	e.checkRepoError(err)
+	if err := e.checkRepoError(err); err != nil {
+		return err
+	}
 
 	// Get remotes, to check if current GIT is ours
 	remotes, err := repo.Remotes()
-	e.checkRepoError(err)
+	if err := e.checkRepoError(err); err != nil {
+		return err
+	}
 
 	// Check if remote is valid (the same as ours
 	if !e.checkIfRemoteValid(remotes) {
-		util.ExitError(
-			errors.New(fmt.Sprintf("REPO: remote url is not equal to provided: %s", e.config.GetRepoURL())),
+		return util.NewGonsulError(
+			fmt.Errorf("REPO: remote url is not equal to provided repository URL"),
 			util.ErrorFailedCloning,
-			e.logger,
 		)
 	}
 
 	e.logger.PrintDebug(fmt.Sprintf("REPO: pulling changes: %s", e.config.GetRepoBranch()))
-	// We shall ignore error here, as Pull return messages such as "non-fast-forward update" as an error
+	// Pull can return non-fatal repository state errors; keep compatibility with
+	// the previous behavior by logging them and continuing to checkout.
 	err = workTree.Pull(&git.PullOptions{
 		RemoteName: e.config.GetRepoRemoteName(),
 		Auth:       *auth,
 	})
-	// TODO: Even though the comment just above is true, we should handle this cases in a better way
 	if err != nil {
-		e.logger.PrintDebug(fmt.Sprintf("REPO: pull complete: %s", err.Error()))
+		pullError := util.RedactSensitive(err.Error(), e.config.GetRepoURL(), e.config.GetRepoSSHKey())
+		e.logger.PrintDebug(fmt.Sprintf("REPO: pull complete: %s", pullError))
 	} else {
 		e.logger.PrintDebug("REPO: pull complete")
 	}
@@ -93,7 +96,7 @@ func (e *exporter) tryCheckout(repo *git.Repository, auth *ssh.AuthMethod) {
 		Create: false,
 		Force:  true,
 	})
-	e.checkRepoError(err)
+	return e.checkRepoError(err)
 }
 
 // checkIfRemoteValid ...
@@ -113,8 +116,11 @@ func (e *exporter) checkIfRemoteValid(remotes []*git.Remote) bool {
 }
 
 // checkRepoError ...
-func (e *exporter) checkRepoError(err error) {
+func (e *exporter) checkRepoError(err error) error {
 	if err != nil {
-		util.ExitError(errors.New("REPO: "+err.Error()), util.ErrorFailedCloning, e.logger)
+		message := util.RedactSensitive(err.Error(), e.config.GetRepoURL(), e.config.GetRepoSSHKey())
+		return util.NewGonsulError(fmt.Errorf("REPO: %s", message), util.ErrorFailedCloning)
 	}
+
+	return nil
 }

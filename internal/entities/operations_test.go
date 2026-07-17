@@ -26,21 +26,21 @@ func TestNewOperationsMatrix(t *testing.T) {
 			inserts++
 			operation.AddInsert(Entry{
 				KVPath: strconv.Itoa(i),
-				Value: strconv.Itoa(i),
+				Value:  strconv.Itoa(i),
 			})
 		case 2:
 			// deletes
 			deletes++
 			operation.AddDelete(Entry{
 				KVPath: strconv.Itoa(i),
-				Value: strconv.Itoa(i),
+				Value:  strconv.Itoa(i),
 			})
 		case 3:
 			// deletes
 			updates++
 			operation.AddUpdate(Entry{
 				KVPath: strconv.Itoa(i),
-				Value: strconv.Itoa(i),
+				Value:  strconv.Itoa(i),
 			})
 		}
 	}

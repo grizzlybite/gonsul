@@ -1,37 +1,40 @@
 package exporter
 
 import (
-	"github.com/miniclip/gonsul/internal/util"
-
 	"encoding/json"
-	"errors"
 	"fmt"
+
+	"github.com/grizzlybite/gonsul/internal/util"
 )
 
-// validateJSON ...
-func (e *exporter) validateJSON(path string, jsonData string) map[string]interface{} {
-	// Create "generic" json struct
-	var arbitraryJSON map[string]interface{}
+func (e *exporter) validateJSON(path string, data string) (map[string]interface{}, error) {
+	var document interface{}
 
-	// Decode data into "generic"
-	err := json.Unmarshal([]byte(jsonData), &arbitraryJSON)
+	err := json.Unmarshal([]byte(data), &document)
 
 	// Decoded JSON ok?
 	if err != nil {
-		util.ExitError(
-			errors.New(fmt.Sprintf("error parsing JSON file: %s with Message: %s", path, err.Error())),
-			util.ErrorFailedJsonDecode,
-			e.logger,
-		)
+		return nil, fmt.Errorf("error parsing JSON file: %s with Message: %s", path, err.Error())
 	}
 
-	return arbitraryJSON
+	documentMap, ok := document.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("error parsing JSON file: %s with Message: root document must be an object", path)
+	}
+
+	return documentMap, nil
 }
 
-// expandJSON ...
-func (e *exporter) expandJSON(path string, jsonData string, localData map[string]string) {
-	arbitraryJSON := e.validateJSON(path, jsonData)
+func (e *exporter) expandJSON(path string, data string, localData map[string]string) error {
+	documentMap, err := e.validateJSON(path, data)
+	if err != nil {
+		return util.NewGonsulError(err, util.ErrorFailedJsonDecode)
+	}
 
-	// Iterate over our "generic" JSON structure
-	e.traverseMap(path, arbitraryJSON, localData)
+	// Flatten and serialize the decoded JSON document.
+	if err := e.expandDocument(path, documentMap, localData); err != nil {
+		return util.NewGonsulError(err, util.ErrorFailedJsonEncode)
+	}
+
+	return nil
 }

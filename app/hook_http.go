@@ -1,16 +1,18 @@
 package app
 
 import (
-	"github.com/miniclip/gonsul/internal/config"
-	"github.com/miniclip/gonsul/internal/util"
+	"github.com/grizzlybite/gonsul/internal/config"
+	"github.com/grizzlybite/gonsul/internal/util"
 
-	"errors"
+	"context"
+	"fmt"
 	"net/http"
+	"time"
 )
 
-// IHookHttp is our interface used for the Hook sgtartegy
+// IHookHttp is our interface used for the Hook strategy.
 type IHookHttp interface {
-	Start(route string, handler func(http.ResponseWriter, *http.Request))
+	Start(ctx context.Context, route string, handler func(http.ResponseWriter, *http.Request)) error
 }
 
 // hookHttp is our IHookHttp concrete implementation
@@ -25,12 +27,31 @@ func NewHookHttp(config config.IConfig, logger util.ILogger) IHookHttp {
 }
 
 // Start starts our HTTP server
-func (h *hookHttp) Start(route string, handler func(http.ResponseWriter, *http.Request)) {
+func (h *hookHttp) Start(ctx context.Context, route string, handler func(http.ResponseWriter, *http.Request)) error {
 	// Create our routes and set handlers
-	http.HandleFunc(route, handler)
+	mux := http.NewServeMux()
+	mux.HandleFunc(route, handler)
+
+	server := &http.Server{
+		Addr:    h.config.GetHookAddr(),
+		Handler: mux,
+	}
+
+	go func() {
+		<-ctx.Done()
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			h.logger.PrintError(fmt.Sprintf("Hook: failed graceful shutdown: %s", err))
+		}
+	}()
 
 	// Launch our HTTP server
-	if err := http.ListenAndServe(":8000", nil); err != nil {
-		util.ExitError(errors.New("Hook: "+err.Error()), util.ErrorFailedHTTPServer, h.logger)
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return util.NewGonsulError(fmt.Errorf("Hook: %w", err), util.ErrorFailedHTTPServer)
 	}
+
+	return nil
 }

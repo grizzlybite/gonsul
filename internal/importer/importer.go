@@ -1,18 +1,18 @@
 package importer
 
 import (
-	"github.com/miniclip/gonsul/internal/config"
-	"github.com/miniclip/gonsul/internal/entities"
-	"github.com/miniclip/gonsul/internal/util"
-
-	"errors"
+	"context"
 	"fmt"
 	"net/http"
+
+	"github.com/grizzlybite/gonsul/internal/config"
+	"github.com/grizzlybite/gonsul/internal/entities"
+	"github.com/grizzlybite/gonsul/internal/util"
 )
 
 // IImporter ...
 type IImporter interface {
-	Start(localData map[string]string)
+	Start(ctx context.Context, localData map[string]string) error
 }
 
 // importer ...
@@ -28,34 +28,45 @@ func NewImporter(config config.IConfig, logger util.ILogger, client *http.Client
 }
 
 // Start ...
-func (i *importer) Start(localData map[string]string) {
+func (i *importer) Start(ctx context.Context, localData map[string]string) error {
 
 	// Create some local variables
 	var ops entities.OperationMatrix
 	var liveData map[string]string
 
 	// Populate our Consul live data
-	liveData = i.createLiveData()
+	liveData, err := i.createLiveData(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Create our operations Matrix
-	ops = i.createOperationMatrix(liveData, localData)
+	ops, err = i.createOperationMatrix(liveData, localData)
+	if err != nil {
+		return err
+	}
 
-	// Print operation table
-	i.printOperations(ops, entities.OperationAll)
 	// Check if it's a dry run
 	if i.config.GetStrategy() == config.StrategyDry {
-		// Exit after having printed the operations table
-		return
+		return i.printDryRun(ops)
+	}
+
+	// Print operation table
+	if err := i.printOperations(ops, entities.OperationAll); err != nil {
+		return err
 	}
 
 	// Process our operations matrix
-	i.processOperations(ops)
+	if err := i.processOperations(ctx, ops); err != nil {
+		return err
+	}
 
 	// Print result summary
 	i.logger.PrintInfo(fmt.Sprintf("Finished: %d Inserts, %d Updates %d Deletes", ops.GetTotalInserts(), ops.GetTotalUpdates(), ops.GetTotalDeletes()))
+	return nil
 }
 
-func (i *importer) processOperations(matrix entities.OperationMatrix) {
+func (i *importer) processOperations(ctx context.Context, matrix entities.OperationMatrix) error {
 	// Did we got any deletes and are we allowed to delete them?
 	if i.config.AllowDeletes() == "false" && matrix.HasDeletes() {
 		// We're not supposed to trigger Consul deletes, output report and exit with error
@@ -66,9 +77,11 @@ func (i *importer) processOperations(matrix entities.OperationMatrix) {
 		if i.config.GetStrategy() == config.StrategyHook {
 			i.setDeletesToLogger(matrix)
 		} else {
-			i.printOperations(matrix, entities.OperationDelete)
+			if err := i.printOperations(matrix, entities.OperationDelete); err != nil {
+				return err
+			}
 		}
-		util.ExitError(errors.New(""), util.ErrorDeleteNotAllowed, i.logger)
+		return util.NewGonsulError(fmt.Errorf("deletes are not allowed"), util.ErrorDeleteNotAllowed)
 	}
 
 	// Initialize the batch counter
@@ -96,13 +109,18 @@ func (i *importer) processOperations(matrix entities.OperationMatrix) {
 			TxnKV = entities.ConsulTxnKV{Verb: &verb, Key: &path, Value: &val}
 		}
 
-		// add the next transaction and check payload lenght
+		// Add the next transaction and check payload length.
 		newTransactions = transactions
 		newTransactions = append(transactions, entities.ConsulTxn{KV: TxnKV})
-		newPayloadSize := i.getTransactionsPayloadSize(&newTransactions)
+		newPayloadSize, err := i.getTransactionsPayloadSize(&newTransactions)
+		if err != nil {
+			return err
+		}
 
 		if newPayloadSize > maximumPayloadSize || len(transactions) == consulTxnLimit {
-			i.processConsulTransaction(transactions, batch)
+			if err := i.processConsulTransaction(ctx, transactions, batch); err != nil {
+				return err
+			}
 			transactions = []entities.ConsulTxn{}
 
 			batch++
@@ -113,9 +131,12 @@ func (i *importer) processOperations(matrix entities.OperationMatrix) {
 
 	// Do we have transactions to process
 	if len(transactions) > 0 {
-		i.processConsulTransaction(transactions, batch)
+		if err := i.processConsulTransaction(ctx, transactions, batch); err != nil {
+			return err
+		}
 	}
 
 	// Consume our channel, to re-allow application interruption
 	<-i.config.WorkingChan()
+	return nil
 }

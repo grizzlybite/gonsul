@@ -1,15 +1,16 @@
 package app
 
 import (
-	"github.com/miniclip/gonsul/internal/config"
-	"github.com/miniclip/gonsul/internal/util"
+	"github.com/grizzlybite/gonsul/internal/config"
+	"github.com/grizzlybite/gonsul/internal/util"
 
+	"context"
 	"fmt"
 	"time"
 )
 
 type Ipoll interface {
-	RunPoll()
+	RunPoll(ctx context.Context) error
 }
 
 type poll struct {
@@ -28,18 +29,34 @@ func NewPoll(config config.IConfig, logger util.ILogger, once Ionce, it int) Ipo
 	}
 }
 
-func (a *poll) RunPoll() {
+func (a *poll) RunPoll(ctx context.Context) error {
 	a.logger.PrintInfo("Starting in mode: POLL")
 
 	// Loop forever
 	count := 1
 	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
 		a.logger.PrintDebug(fmt.Sprintf("POLL: performing iteration %d", count))
 		// Run our once step
-		a.once.RunOnce()
+		if err := a.once.RunOnce(ctx); err != nil {
+			if util.ErrorCode(err, 0) != util.ErrorDeleteNotAllowed {
+				return err
+			}
+			a.logger.PrintError(err.Error())
+		}
 
-		// Sleep for the amount of time in config
-		time.Sleep(time.Second * time.Duration(a.config.GetPollInterval()))
+		timer := time.NewTimer(time.Second * time.Duration(a.config.GetPollInterval()))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil
+		case <-timer.C:
+		}
 
 		// Make sure we respect the give max iterations (zero means infinite loop)
 		// NOTE: This is only useful for testing purposes
@@ -50,4 +67,6 @@ func (a *poll) RunPoll() {
 		// Increment our iteration counter
 		count++
 	}
+
+	return nil
 }

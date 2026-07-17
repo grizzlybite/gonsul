@@ -1,21 +1,24 @@
 package config
 
 import (
-	"github.com/miniclip/gonsul/internal/util"
+	"github.com/grizzlybite/gonsul/internal/util"
 
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"github.com/namsral/flag"
 	"os"
 	"strings"
-	"github.com/namsral/flag"
 )
 
 const StrategyDry = "DRYRUN"
 const StrategyOnce = "ONCE"
 const StrategyPoll = "POLL"
 const StrategyHook = "HOOK"
+
+const DryRunOutputSummary = "summary"
+const DryRunOutputTable = "table"
+const DryRunOutputJSON = "json"
 
 type config struct {
 	shouldClone     bool
@@ -41,6 +44,8 @@ type config struct {
 	validExtensions []string
 	keepFileExt     bool
 	timeout         int
+	hookAddr        string
+	dryRunOutput    string
 	version         bool
 }
 
@@ -70,6 +75,8 @@ type IConfig interface {
 	GetValidExtensions() []string
 	KeepFileExt() bool
 	GetTimeout() int
+	GetHookAddr() string
+	GetDryRunOutput() string
 	IsShowVersion() bool
 }
 
@@ -110,13 +117,18 @@ func buildConfig(flags ConfigFlags) (*config, error) {
 	// Make sure strategy is properly given
 	strategy := strings.ToUpper(*flags.Strategy)
 	if strategy != StrategyDry && strategy != StrategyOnce && strategy != StrategyPoll && strategy != StrategyHook {
-		return nil, errors.New(fmt.Sprintf("strategy invalid, must be one of: %s, %s, %s, %s", StrategyDry, StrategyOnce, StrategyPoll, StrategyHook))
+		return nil, fmt.Errorf("strategy invalid, must be one of: %s, %s, %s, %s", StrategyDry, StrategyOnce, StrategyPoll, StrategyHook)
 	}
 
 	// Make sure delete method is properly given
 	allowDeletes := strings.ToLower(*flags.AllowDeletes)
 	if allowDeletes != "true" && allowDeletes != "false" && allowDeletes != "skip" {
-		return nil, errors.New(fmt.Sprintf("AllowDelete method is invalid, please define one of the following valid options as argument: true, false, skip"))
+		return nil, fmt.Errorf("AllowDelete method is invalid, please define one of the following valid options as argument: true, false, skip")
+	}
+
+	dryRunOutput := strings.ToLower(*flags.DryRunOutput)
+	if dryRunOutput != DryRunOutputSummary && dryRunOutput != DryRunOutputTable && dryRunOutput != DryRunOutputJSON {
+		return nil, fmt.Errorf("dry-run output invalid, must be one of: %s, %s, %s", DryRunOutputSummary, DryRunOutputTable, DryRunOutputJSON)
 	}
 
 	// Shall we use a local copy of the repository instead of cloning ourselves
@@ -129,7 +141,7 @@ func buildConfig(flags ConfigFlags) (*config, error) {
 	// Make sure log level is properly set
 	errorLevel := util.ErrorLevels[strings.ToUpper(*flags.LogLevel)]
 	if errorLevel < util.LogLevelErr {
-		return nil, errors.New(fmt.Sprintf("log level invalid, must be one of: %s, %s, %s", util.LogErr, util.LogInfo, util.LogDebug))
+		return nil, fmt.Errorf("log level invalid, must be one of: %s, %s, %s", util.LogErr, util.LogInfo, util.LogDebug)
 	}
 
 	// Should we build a secrets map for on-the-fly mustache replacement
@@ -165,6 +177,8 @@ func buildConfig(flags ConfigFlags) (*config, error) {
 		validExtensions: extensions,
 		keepFileExt:     *flags.KeepFileExt,
 		timeout:         *flags.Timeout,
+		hookAddr:        *flags.HookAddr,
+		dryRunOutput:    dryRunOutput,
 		version:         *flags.Version,
 	}, nil
 }
@@ -261,6 +275,14 @@ func (config *config) GetTimeout() int {
 	return config.timeout
 }
 
+func (config *config) GetHookAddr() string {
+	return config.hookAddr
+}
+
+func (config *config) GetDryRunOutput() string {
+	return config.dryRunOutput
+}
+
 func (config *config) IsShowVersion() bool {
 	return config.version
 }
@@ -272,14 +294,14 @@ func buildSecretsMap(secretsFile string, repoRootPath string) (map[string]string
 		file = repoRootPath + "/" + secretsFile
 		if _, err := os.Stat(file); os.IsNotExist(err) {
 			// Provided file nowhere to be seen
-			return nil, errors.New(fmt.Sprintf("the provided secrets file (%s) cannot be found", secretsFile))
+			return nil, fmt.Errorf("the provided secrets file (%s) cannot be found", secretsFile)
 		}
 	}
 
 	// we're still here, we got a file, open it, try to parse JSON and return our map
-	content, err := ioutil.ReadFile(file) // just pass the file name
+	content, err := os.ReadFile(file) // just pass the file name
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("could not open file (%s). Error message: %s", secretsFile, err.Error()))
+		return nil, fmt.Errorf("could not open file (%s). Error message: %s", secretsFile, err.Error())
 	}
 
 	var secretsMap map[string]string
@@ -287,7 +309,7 @@ func buildSecretsMap(secretsFile string, repoRootPath string) (map[string]string
 	// Decode data into "generic"
 	err = json.Unmarshal([]byte(content), &secretsMap)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("could not parse keys JSON file (%s). Error message: %s", secretsFile, err.Error()))
+		return nil, fmt.Errorf("could not parse keys JSON file (%s). Error message: %s", secretsFile, err.Error())
 	}
 
 	return secretsMap, nil
@@ -299,7 +321,7 @@ func setValidExtensions(validExtensions string) ([]string, error) {
 	// Try to explode the string
 	extensions := strings.Split(validExtensions, ",")
 	if len(extensions) < 1 {
-		return nil, errors.New(fmt.Sprintf("could not open get valid extensions from flag (%s). Value given: %s", "--input-ext", validExtensions))
+		return nil, fmt.Errorf("could not open get valid extensions from flag (%s). Value given: %s", "--input-ext", validExtensions)
 	}
 
 	for _, extension := range extensions {

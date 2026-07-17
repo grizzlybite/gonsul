@@ -1,8 +1,9 @@
 package app
 
 import (
-	"github.com/miniclip/gonsul/internal/config"
+	"github.com/grizzlybite/gonsul/internal/config"
 
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -36,7 +37,10 @@ func NewApplication(
 }
 
 // Start ...
-func (a *Application) Start() {
+func (a *Application) Start() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Relay all Signals to our channel
 	signal.Notify(a.sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -44,21 +48,22 @@ func (a *Application) Start() {
 	go func() {
 		// Wait for a signal through the channel
 		<-a.sigChan
+		cancel()
 		fmt.Print(" Interrupt received, waiting for work to finish... ")
 		// Try to write to working channel (thus waiting for any in progress non interruptible work)
 		a.config.WorkingChan() <- false
-		// Exit
 		fmt.Print(" Quitting!")
-		os.Exit(0)
 	}()
 
 	// Switch our run strategy
 	switch a.config.GetStrategy() {
 	case config.StrategyDry, config.StrategyOnce:
-		a.once.RunOnce()
+		return a.once.RunOnce(ctx)
 	case config.StrategyHook:
-		a.hook.RunHook()
+		return a.hook.RunHook(ctx)
 	case config.StrategyPoll:
-		a.poll.RunPoll()
+		return a.poll.RunPoll(ctx)
 	}
+
+	return nil
 }

@@ -11,7 +11,7 @@ VERSION=$(shell git describe --abbrev=0 --always --tags)
 BUILD_DATE=$(shell date -u +%Y%m%d.%H%M%S)
 
 # Setup the -ldflags option for go build here, interpolate the variable values
-LDFLAGS_APP=-ldflags "-X github.com/miniclip/gonsul/app.Version=${VERSION} -X github.com/miniclip/gonsul/app.BuildDate=${BUILD_DATE}"
+LDFLAGS_APP=-ldflags "-X github.com/grizzlybite/gonsul/app.Version=${VERSION} -X github.com/grizzlybite/gonsul/app.BuildDate=${BUILD_DATE}"
 
 # Builds the application
 build:
@@ -29,22 +29,44 @@ mocks:
 	CGO_ENABLED=0 $(GOPATH)/bin/mockery --all --output ./tests/mocks --dir ./internal/
 	@echo "=== Done ==="
 
-# Validates the correct format of the code
+# Formats the code
 fmt:
+	@echo "=== Formatting code ==="
+	gofmt -w ${SRC}
+	@echo "=== Done ==="
+
+# Validates the correct format of the code
+fmt-check:
 	@echo "=== Validating code compliance ==="
-	gofmt -l -e ${SRC}
+	@test -z "$$(gofmt -l -e ${SRC})"
 	@echo "=== Done ==="
 
 # Runs our unit tests
-test: mocks fmt
+test: fmt-check
 	@echo "=== Running tests ==="
 	go test ${TESTS}
+	@echo "=== Done ==="
+
+deps-audit:
+	@echo "=== Checking dependency updates ==="
+	go list -m -u all
+	@echo "=== Running vulnerability scan ==="
+	$(MAKE) vulncheck
+	@echo "=== Done ==="
+
+vulncheck:
+	@echo "=== Running vulnerability scan ==="
+	GOTOOLCHAIN=go1.26.5 go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 	@echo "=== Done ==="
 
 # Launches our environment
 env:
 	@echo "=== Running Environment ==="
-	docker-compose up
+	docker compose up
+
+env-down:
+	@echo "=== Stopping Environment ==="
+	docker compose down
 
 # Lint our root folder Markdown files
 MARKDOWNLINT := $(shell command -v markdownlint 2> /dev/null)

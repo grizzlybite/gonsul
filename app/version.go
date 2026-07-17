@@ -1,6 +1,6 @@
 package app
 
 var (
-	Version = ""
+	Version   = ""
 	BuildDate = ""
 )

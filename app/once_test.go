@@ -1,8 +1,9 @@
 package app
 
 import (
-	"github.com/miniclip/gonsul/internal/config"
+	"github.com/grizzlybite/gonsul/internal/config"
 
+	"context"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
 
@@ -26,11 +27,12 @@ func TestOnce_RunOnce(t *testing.T) {
 		cfg.On("GetStrategy").Return(mode)
 		log.On("PrintInfo", mock.Anything).Return()
 		log.On("PrintDebug", mock.Anything).Return()
-		exp.On("Start").Return(transitive)
-		imp.On("Start", transitive).Return()
+		exp.On("Start").Return(transitive, nil)
+		imp.On("Start", mock.Anything, transitive).Return(nil)
 
 		// Run our application mode
-		once.RunOnce()
+		err := once.RunOnce(context.Background())
+		Expect(err).NotTo(HaveOccurred())
 
 		// Create our expectations
 		Expect(cfg.AssertExpectations(t)).To(BeTrue(), "Assert GetStrategy")

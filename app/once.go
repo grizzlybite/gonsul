@@ -1,14 +1,16 @@
 package app
 
 import (
-	"github.com/miniclip/gonsul/internal/config"
-	"github.com/miniclip/gonsul/internal/exporter"
-	"github.com/miniclip/gonsul/internal/importer"
-	"github.com/miniclip/gonsul/internal/util"
+	"github.com/grizzlybite/gonsul/internal/config"
+	"github.com/grizzlybite/gonsul/internal/exporter"
+	"github.com/grizzlybite/gonsul/internal/importer"
+	"github.com/grizzlybite/gonsul/internal/util"
+
+	"context"
 )
 
 type Ionce interface {
-	RunOnce()
+	RunOnce(ctx context.Context) error
 }
 
 type once struct {
@@ -28,7 +30,7 @@ func NewOnce(config config.IConfig, logger util.ILogger, exporter exporter.IExpo
 }
 
 // RunOnce is our entry point function for the Once Application mode
-func (a *once) RunOnce() {
+func (a *once) RunOnce(ctx context.Context) error {
 	strategy := a.config.GetStrategy()
 	// Check strategy
 	if strategy == config.StrategyDry {
@@ -39,11 +41,17 @@ func (a *once) RunOnce() {
 
 	// Start our data export
 	a.logger.PrintDebug("Starting data retrieve from GIT")
-	exportedData := a.exporter.Start()
+	exportedData, err := a.exporter.Start()
+	if err != nil {
+		return err
+	}
 	a.logger.PrintDebug("Finished data retrieve from GIT")
 
 	// Start data import to Consul
 	a.logger.PrintDebug("Starting data import to Consul")
-	a.importer.Start(exportedData)
+	if err := a.importer.Start(ctx, exportedData); err != nil {
+		return err
+	}
 	a.logger.PrintDebug("Finished data import to Consul")
+	return nil
 }

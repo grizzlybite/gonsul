@@ -1,39 +1,48 @@
 package exporter
 
 import (
-	"github.com/miniclip/gonsul/internal/entities"
+	"github.com/grizzlybite/gonsul/internal/entities"
+	"github.com/grizzlybite/gonsul/internal/util"
 
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
 )
 
-// traverse is our entry point function to start traversing a given directory.
-// this is a recursive function, as it will call itself whenever we hit a sub folder
-func (e *exporter) parseDir(directory string, localData map[string]string) {
+// parseDir recursively traverses a repository directory and parses supported files.
+func (e *exporter) parseDir(directory string, localData map[string]string) error {
 	// Read the entire directory
-	files, _ := ioutil.ReadDir(directory)
+	files, err := os.ReadDir(directory)
+	if err != nil {
+		return util.NewGonsulError(fmt.Errorf("read directory %s: %w", directory, err), util.ErrorFailedJsonDecode)
+	}
 	// Loop each entry
 	for _, file := range files {
 		if file.IsDir() {
 			// We found a directory, recurse it
 			newDir := directory + "/" + file.Name()
-			e.parseDir(newDir, localData)
+			if err := e.parseDir(newDir, localData); err != nil {
+				return err
+			}
 		} else {
 			filePath := directory + "/" + file.Name()
 			ext := filepath.Ext(filePath)
 			if !e.isExtensionValid(ext) {
 				continue
 			}
-			content, err := ioutil.ReadFile(filePath) // just pass the file name
+			content, err := os.ReadFile(filePath)
 			if err != nil {
-				fmt.Print(err)
+				return util.NewGonsulError(fmt.Errorf("read file %s: %w", filePath, err), util.ErrorFailedJsonDecode)
 			}
-			e.parseFile(filePath, string(content), localData)
+			if err := e.parseFile(filePath, string(content), localData); err != nil {
+				return err
+			}
 		}
 	}
+
+	return nil
 }
 
 // isExtensionValid checks if given file extensions is valid for processing
@@ -48,47 +57,54 @@ func (e *exporter) isExtensionValid(extension string) bool {
 }
 
 // parseFile ...
-func (e *exporter) parseFile(filePath string, value string, localData map[string]string) {
+func (e *exporter) parseFile(filePath string, value string, localData map[string]string) error {
 	// Extract our file extension and cleanup file path
 	ext := filepath.Ext(filePath)
 	cleanedPath := e.cleanFilePath(filePath)
 
-	// Check if the file is a JSON one
+	// Check if the file is JSON.
 	if ext == ".json" {
-		// Check if we should parse JSON files
 		if e.config.ShouldExpandJSON() {
-			// Great, we should iterate our JSON (And that's the value)
-			e.expandJSON(cleanedPath, value, localData)
+			if err := e.expandJSON(cleanedPath, value, localData); err != nil {
+				return err
+			}
 
-			// we must return here, to avoid importing the file as blob
-			return
+			// Return here to avoid importing the original file as a blob.
+			return nil
 		}
 
-		// Not expanding json file, but we should validate anyways
-		// HEADS UP: Below function will exit program if any error found
-		_ = e.validateJSON(cleanedPath, value)
+		// Not expanding JSON, but the file still must be valid JSON.
+		if _, err := e.validateJSON(cleanedPath, value); err != nil {
+			return util.NewGonsulError(err, util.ErrorFailedJsonDecode)
+		}
 	}
 
-	// Check if the file is a YAML one
-	if ext == ".yaml" {
-		// Check if we should parse JSON files
+	// Check if the file is YAML.
+	if isYAMLExtension(ext) {
 		if e.config.ShouldExpandYAML() {
-			// Great, we should iterate our JSON (And that's the value)
-			e.expandYAML(cleanedPath, value, localData)
+			if err := e.expandYAML(cleanedPath, value, localData); err != nil {
+				return err
+			}
 
-			// we must return here, to avoid importing the file as blob
-			return
+			// Return here to avoid importing the original file as a blob.
+			return nil
 		}
 
-		// Not expanding json file, but we should validate anyways
-		// HEADS UP: Below function will exit program if any error found
-		_ = e.validateYAML(cleanedPath, value)
+		// Not expanding YAML, but the file still must be valid YAML.
+		if _, err := e.validateYAML(cleanedPath, value); err != nil {
+			return util.NewGonsulError(err, util.ErrorFailedJsonDecode)
+		}
 	}
 
-	// Not expanding JSON files, create new single "piece" with the
-	// value given (the file content) and add to collection
+	// Store the whole file content as a single value.
 	piece := e.createPiece(cleanedPath, value)
 	localData[piece.KVPath] = piece.Value
+
+	return nil
+}
+
+func isYAMLExtension(extension string) bool {
+	return extension == ".yaml" || extension == ".yml"
 }
 
 // cleanFilePath ...

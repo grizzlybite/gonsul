@@ -1,45 +1,93 @@
 package exporter
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 )
 
-// traverseJSON ...
-func (e *exporter) traverseMap(path string, arbitraryJSON map[string]interface{}, localData map[string]string) {
-	for key, value := range arbitraryJSON {
+func (e *exporter) expandDocument(path string, document map[string]interface{}, localData map[string]string) error {
+	return e.flattenMap(path, document, localData)
+}
+
+func (e *exporter) flattenMap(path string, document map[string]interface{}, localData map[string]string) error {
+	keys := make([]string, 0, len(document))
+	for key := range document {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		value := document[key]
 		// Append key to path
 		newPath := path + "/" + key
 
-		switch value.(type) {
-		case string:
-			// We have a string value, create piece and add to collection
-			piece := e.createPiece(newPath, value.(string))
-			localData[piece.KVPath] = piece.Value
-
-		case bool:
-			// We have a string value, create piece and add to collection
-			piece := e.createPiece(newPath, strconv.FormatBool(value.(bool)))
-			localData[piece.KVPath] = piece.Value
-
-		case float64:
-			// We have a "Javascript number" -> always floating point. Create piece and add to collection
-			piece := e.createPiece(newPath, fmt.Sprint(value.(float64)))
-			localData[piece.KVPath] = piece.Value
-
-		case int:
-			piece := e.createPiece(newPath, fmt.Sprint(value.(int)))
-			localData[piece.KVPath] = piece.Value
-
-		case []interface{}:
-			// We have an array - ohoh
-			// Array inside consul are... well are not! Insert as string for now
-			piece := e.createPiece(newPath, fmt.Sprint(value.([]interface{})))
-			localData[piece.KVPath] = piece.Value
-
+		switch typedValue := value.(type) {
 		case map[string]interface{}:
 			// we have an object, recurse casting the value
-			e.traverseMap(newPath, value.(map[string]interface{}), localData)
+			if err := e.flattenMap(newPath, typedValue, localData); err != nil {
+				return err
+			}
+
+		default:
+			serialized, err := serializeValue(typedValue)
+			if err != nil {
+				return err
+			}
+
+			piece := e.createPiece(newPath, serialized)
+			localData[piece.KVPath] = piece.Value
 		}
 	}
+
+	return nil
+}
+
+func serializeValue(value interface{}) (string, error) {
+	switch typedValue := value.(type) {
+	case string:
+		return typedValue, nil
+	case bool:
+		return strconv.FormatBool(typedValue), nil
+	case nil:
+		return "null", nil
+	case float64:
+		return fmt.Sprint(typedValue), nil
+	case float32:
+		return strconv.FormatFloat(float64(typedValue), 'g', -1, 32), nil
+	case int:
+		return strconv.Itoa(typedValue), nil
+	case int8:
+		return strconv.FormatInt(int64(typedValue), 10), nil
+	case int16:
+		return strconv.FormatInt(int64(typedValue), 10), nil
+	case int32:
+		return strconv.FormatInt(int64(typedValue), 10), nil
+	case int64:
+		return strconv.FormatInt(typedValue, 10), nil
+	case uint:
+		return strconv.FormatUint(uint64(typedValue), 10), nil
+	case uint8:
+		return strconv.FormatUint(uint64(typedValue), 10), nil
+	case uint16:
+		return strconv.FormatUint(uint64(typedValue), 10), nil
+	case uint32:
+		return strconv.FormatUint(uint64(typedValue), 10), nil
+	case uint64:
+		return strconv.FormatUint(typedValue, 10), nil
+	case []interface{}:
+		return serializeCollection(typedValue)
+	default:
+		return "", fmt.Errorf("unsupported value type %T", value)
+	}
+}
+
+func serializeCollection(value interface{}) (string, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("serialize collection as JSON: %w", err)
+	}
+
+	return string(data), nil
 }

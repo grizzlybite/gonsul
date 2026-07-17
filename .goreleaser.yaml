@@ -1,0 +1,70 @@
+version: 2
+
+project_name: gonsul
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gonsul
+    main: ./cmd/gonsul.go
+    binary: gonsul
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/grizzlybite/gonsul/app.Version={{ .Version }}
+        -X github.com/grizzlybite/gonsul/app.BuildDate={{ .Date }}
+
+archives:
+  - id: gonsul
+    ids:
+      - gonsul
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - CHANGELOG.md
+      - LICENCE.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-snapshot'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs?:'
+      - '^test:'
+
+dockers_v2:
+  - id: gonsul
+    ids:
+      - gonsul
+    dockerfile: Dockerfile.goreleaser
+    images:
+      - grizzlybite/gonsul
+    tags:
+      - '{{ .Tag }}'
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64

@@ -2,9 +2,9 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"github.com/miniclip/gonsul/internal/util"
+	"github.com/grizzlybite/gonsul/internal/util"
 	"github.com/namsral/flag"
+	"os"
 )
 
 type ConfigFlags struct {
@@ -28,6 +28,8 @@ type ConfigFlags struct {
 	ValidExtensions *string
 	KeepFileExt     *bool
 	Timeout         *int
+	HookAddr        *string
+	DryRunOutput    *string
 	Version         *bool
 }
 
@@ -53,11 +55,13 @@ func parseFlags() ConfigFlags {
 	flags.ExpandJSON = flag.Bool("expand-json", false, "Expand and parse JSON files as full paths? (Default false)")
 	flags.ExpandYAML = flag.Bool("expand-yaml", false, "Expand and parse YAML files as full paths? (Default false)")
 	flags.SecretsFile = flag.String("secrets-file", "", "A key value json file with placeholders->secrets mapping, in order to do on the fly replace")
-	flags.AllowDeletes = flag.String("allow-deletes", "false", "false, nothing will be done and a report on conflicting deletes will be shown; true: deletes reported conflitcs and proceeds; skip: reportes conflitcs, does not performe any deletes and proceeds syncing remaining files.) (Default false)")
+	flags.AllowDeletes = flag.String("allow-deletes", "false", "false: stop and show conflicting deletes; true: delete conflicts and proceed; skip: do not delete conflicts and continue syncing remaining files. (Default false)")
 	flags.PollInterval = flag.Int("poll-interval", 60, "The number of seconds for the repository polling interval")
-	flags.ValidExtensions = flag.String("input-ext", "json,txt,ini", "A comma separated list of file extensions valid as input")
-	flags.KeepFileExt = flag.Bool("keep-ext", false, "Do we want to keep file name extensions ? (If not set to true defaults by ommiting the file name extension.) (Default false)")
+	flags.ValidExtensions = flag.String("input-ext", "json,txt,ini", "A comma separated list of file extensions valid as input, for example json,txt,ini,yaml,yml")
+	flags.KeepFileExt = flag.Bool("keep-ext", false, "Keep file name extensions. If false, file name extensions are omitted. (Default false)")
 	flags.Timeout = flag.Int("timeout", 5, "The number of seconds for the client to wait for a response from Consul")
+	flags.HookAddr = flag.String("hook-addr", ":8000", "The address the HOOK HTTP server listens on")
+	flags.DryRunOutput = flag.String("dry-run-output", DryRunOutputSummary, fmt.Sprintf("The DRYRUN output format (%s, %s, %s)", DryRunOutputSummary, DryRunOutputTable, DryRunOutputJSON))
 	flags.Version = flag.Bool("v", false, "Will show the Gonsul version")
 
 	// Parse our command line flags

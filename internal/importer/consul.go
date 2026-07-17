@@ -3,13 +3,14 @@ package importer
 import (
 	"strconv"
 
-	"github.com/miniclip/gonsul/internal/entities"
-	"github.com/miniclip/gonsul/internal/util"
+	"github.com/grizzlybite/gonsul/internal/entities"
+	"github.com/grizzlybite/gonsul/internal/util"
 
 	"bytes"
+	"context"
 	"encoding/json"
-	"errors"
-	"io/ioutil"
+	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -17,13 +18,13 @@ const consulTxnLimit = 64
 const maximumPayloadSize = 500000 // max size is actually 512kb
 
 // processConsulTransaction ...
-func (i *importer) processConsulTransaction(transactions []entities.ConsulTxn, batchNumber int) {
+func (i *importer) processConsulTransaction(ctx context.Context, transactions []entities.ConsulTxn, batchNumber int) error {
 	batch := strconv.Itoa(batchNumber)
 
 	// Encode our transaction into a JSON payload
 	jsonPayload, err := json.Marshal(transactions)
 	if err != nil {
-		util.ExitError(errors.New("Marshal: "+err.Error()+" in Batch "+batch), util.ErrorFailedJsonEncode, i.logger)
+		return util.NewGonsulError(fmt.Errorf("Marshal: %w in Batch %s", err, batch), util.ErrorFailedJsonEncode)
 	}
 
 	// Create our URL
@@ -31,9 +32,9 @@ func (i *importer) processConsulTransaction(transactions []entities.ConsulTxn, b
 
 	// build our request
 	i.logger.PrintDebug("CONSUL: creating PUT request for Batch " + batch)
-	req, err := http.NewRequest("PUT", consulUrl, bytes.NewBuffer(jsonPayload))
+	req, err := http.NewRequestWithContext(ctx, "PUT", consulUrl, bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		util.ExitError(errors.New("NewRequestPUT"+err.Error()+" in Batch "+batch), util.ErrorFailedConsulConnection, i.logger)
+		return util.NewGonsulError(fmt.Errorf("NewRequestPUT: %w in Batch %s", err, batch), util.ErrorFailedConsulConnection)
 	}
 
 	// Set ACL token
@@ -47,7 +48,8 @@ func (i *importer) processConsulTransaction(transactions []entities.ConsulTxn, b
 	i.logger.PrintDebug("CONSUL: calling PUT request for Batch " + batch)
 	resp, err := i.client.Do(req)
 	if err != nil {
-		util.ExitError(errors.New("DoPUT: "+err.Error()+" for Batch "+batch), util.ErrorFailedConsulConnection, i.logger)
+		message := util.RedactSensitive(err.Error(), consulUrl, i.config.GetConsulACL())
+		return util.NewGonsulError(fmt.Errorf("DoPUT: %s for Batch %s", message, batch), util.ErrorFailedConsulConnection)
 	}
 
 	// Clean response after function ends
@@ -59,20 +61,25 @@ func (i *importer) processConsulTransaction(transactions []entities.ConsulTxn, b
 
 	// Read the response body
 	i.logger.PrintDebug("CONSUL: reading PUT response from Batch " + batch)
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		util.ExitError(errors.New("ReadPutResponse: "+err.Error()+" in Batch "+batch), util.ErrorFailedReadingResponse, i.logger)
+		return util.NewGonsulError(fmt.Errorf("ReadPutResponse: %w in Batch %s", err, batch), util.ErrorFailedReadingResponse)
 	}
 
 	// Cast response to string
 	bodyString := string(bodyBytes)
 
 	if resp.StatusCode != 200 {
-		util.ExitError(errors.New("TransactionError: "+bodyString+" in Batch "+batch), util.ErrorFailedConsulTxn, i.logger)
+		return util.NewGonsulError(
+			fmt.Errorf("TransactionError: consul returned %s with %d response bytes in Batch %s", resp.Status, len(bodyString), batch),
+			util.ErrorFailedConsulTxn,
+		)
 	}
 
 	// All good. Output some status for each transaction operation
 	for _, txn := range transactions {
 		i.logger.PrintInfo("Operation: " + *txn.KV.Verb + " Path: " + *txn.KV.Key + " Batch: " + batch)
 	}
+
+	return nil
 }

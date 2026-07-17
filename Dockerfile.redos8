@@ -1,0 +1,33 @@
+FROM golang:1.26.5-alpine AS build
+
+ARG VERSION=dev
+ARG BUILD_DATE=unknown
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux \
+    go build \
+    -trimpath \
+    -ldflags="-s -w \
+    -X 'github.com/grizzlybite/gonsul/app.Version=${VERSION}' \
+    -X 'github.com/grizzlybite/gonsul/app.BuildDate=${BUILD_DATE}'" \
+    -o /out/gonsul \
+    ./cmd/gonsul.go
+
+FROM registry.red-soft.ru/redos8c/ubi-micro:8.0-260714
+
+COPY redos8/anchors/ /etc/pki/ca-trust/source/anchors/
+RUN update-ca-trust
+
+COPY --from=build --chown=10001:0 \
+    /out/gonsul \
+    /usr/local/bin/gonsul
+
+USER 10001
+
+ENTRYPOINT ["/usr/local/bin/gonsul"]

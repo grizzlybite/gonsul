@@ -1,7 +1,7 @@
 # Gonsul - A Git to Consul tool, in Go
 
-![Docker image](https://github.com/miniclip/gonsul/workflows/Docker%20image/badge.svg?branch=master)
-![Checks and tests](https://github.com/miniclip/gonsul/workflows/Checks%20and%20tests/badge.svg?branch=master)
+![Release](https://github.com/grizzlybite/gonsul/actions/workflows/release.yaml/badge.svg)
+![Checks](https://github.com/grizzlybite/gonsul/actions/workflows/checks_tests.yaml/badge.svg)
 
 This tool serves as an entry point for the Hashicorp's Consul KV store. Not only because Consul
 lacks of a built in
@@ -9,7 +9,7 @@ audit mechanism, but also because having configurations managed in GIT, using a 
 development-to-master flow is much friendly and familiar to any development team to manage
 configurations.
 
-Downloads in [releases page](https://github.com/miniclip/gonsul/releases).
+Downloads in [releases page](https://github.com/grizzlybite/gonsul/releases).
 
 ## Important Notes
 
@@ -71,8 +71,45 @@ JSON, and inserted into Consul pretty formatted.
 appending the JSON path
 to the previous folder structure, creating single Consul KV entries for each value. **Caveats:** Any
 arrays found are
-inserted into Consul a bracketed comma separated value string. More details on this on the flags
+inserted into Consul as compact JSON array text. More details on this on the flags
 description.
+
+## Expanded JSON and YAML Contract
+
+When `--expand-json=true` or `--expand-yaml=true` is enabled, the root document must be an object.
+Each nested object key is appended to the generated Consul KV path, and leaf values are stored as
+strings because Consul KV stores bytes, not native JSON or YAML types.
+
+Expanded leaf values are written with the following contract:
+
+- string scalars are stored as their decoded string value;
+- boolean scalars are stored as `true` or `false`;
+- numeric scalars are stored in decimal string form;
+- `null` is stored as the string `null`;
+- arrays are stored as compact JSON array text, for example `["one","two","value with spaces"]`.
+
+Array values use the same serialization for JSON and YAML input. Strings inside arrays keep their
+decoded content, including spaces, commas, quotes, backslashes, empty strings and Unicode. Consumers
+that read an array value from Consul should parse it with a JSON parser. Array element order is
+preserved.
+
+For example, this YAML input:
+
+```yaml
+ranges:
+  - "U+E000..U+F8FF"
+  - "U+F0000..U+FFFFF"
+quoted:
+  - 'say "hello"'
+  - 'C:\temp\file'
+```
+
+creates these Consul KV values when expanded:
+
+```text
+ranges = ["U+E000..U+F8FF","U+F0000..U+FFFFF"]
+quoted = ["say \"hello\"","C:\\temp\\file"]
+```
 
 ## Some Features
 
@@ -98,7 +135,7 @@ without having the KV paths namespaced, we **strongly** rely on Consul ACL's. So
 delete in case of an
 ACL mistake we would like to have Gonsul to operate on a mode where it does not perform any deletes.
 In such mode, when
-Gonsul detectes *delete* operation, it will terminate with a specific error number, printing a list
+Gonsul detects a *delete* operation, it will terminate with a specific error number, printing a list
 of KV paths that it
 would delete, allowing a team member to decide whether to manually run the operation or investigate
 any ACL problem
@@ -150,6 +187,8 @@ specifying flags is:
 --poll-interval=
 --input-ext=
 --keep-ext=
+--hook-addr=
+--dry-run-output=
 ```
 
 Below is the full description for each individual command line flag.
@@ -187,7 +226,8 @@ differences
 **applying the same logic as the `once` strategy**. The process will work forever and it will only
 stop on any error or
 a *SIGINT* is received.
-- **`HOOK`** This is the last strategy type, and in this mode, Gonsul will lauch an HTTP server that
+- **`HOOK`** This is the last strategy type, and in this mode, Gonsul will launch an HTTP server
+that
 listens on a
 specified port waiting for `GET` request triggering and **applying the same logic as the `once`
 strategy**. Again, this
@@ -357,8 +397,9 @@ previous folder/file hierarchy and create single entries in Consul KV for each v
 caveats regarding the
 JSON file expanding. Some important ones are:
 
-- Any **arrays found** are inserted into Consul as a bracketed comma separated value string,
-for example: `["val1","val2","otherval"]`
+- Any **arrays found** are inserted into Consul as a compact JSON array string,
+for example: `["val1","val2","other value"]`. Consul KV stores bytes/strings, not native array
+types, so applications should parse this value with a JSON parser. Array element order is preserved.
 - All the **boolean values** are inserted into Consul as strings `true` and `false`. This might
 break some applications
 when reading configuration, as they will be just strings after all.
@@ -366,6 +407,7 @@ when reading configuration, as they will be just strings after all.
 into consideration when
 reading configurations from your app as any numeric values will be strings when coming out from
 Consul.
+- JSON `null` values are inserted into Consul as the string `null`.
 
 ### `--expand-yaml`
 
@@ -373,7 +415,8 @@ Consul.
 > `default:` **false**
 > `example:` **`--expand-yaml=true`**
 
-This will tell Gonsul how to treat YAML files. If true, Gonsul will traverse the YAML files and
+This will tell Gonsul how to treat YAML files (`.yaml` and `.yml`). If true, Gonsul will traverse
+the YAML files and
 append the path to the
 previous folder/file hierarchy and create single entries in Consul KV for each value.
 
@@ -381,8 +424,9 @@ previous folder/file hierarchy and create single entries in Consul KV for each v
 caveats regarding the
 YAML file expanding. Some important ones are:
 
-- Any **arrays found** are inserted into Consul as a bracketed comma separated value string,
-for example: `["val1","val2","otherval"]`
+- Any **arrays found** are inserted into Consul as a compact JSON array string,
+for example: `["val1","val2","other value"]`. Consul KV stores bytes/strings, not native array
+types, so applications should parse this value with a JSON parser. Array element order is preserved.
 - All the **boolean values** are inserted into Consul as strings `true` and `false`. This might
 break some applications
 when reading configuration, as they will be just strings after all.
@@ -390,6 +434,21 @@ when reading configuration, as they will be just strings after all.
 into consideration when
 reading configurations from your app as any numeric values will be strings when coming out from
 Consul.
+- YAML `null` values are inserted into Consul as the string `null`.
+
+For example, this expanded YAML array:
+
+```yaml
+ranges:
+  - "U+E000..U+F8FF"
+  - "U+F0000..U+FFFFF"
+```
+
+is stored in Consul KV as this JSON text:
+
+```json
+["U+E000..U+F8FF","U+F0000..U+FFFFF"]
+```
 
 ### `--secrets-file`
 
@@ -422,7 +481,7 @@ secrets.  An example
 no secrets are written to disk.
 **Note 2:** The placeholders **should** follow the *mustache* triple curly braces
 `{{{FOO_DB_USER}}}`, that means
-*"unescaped HTML charcaters"* - basically takes the value as is.
+*"unescaped HTML characters"* - basically takes the value as is.
 
 ### `--allow-deletes`
 
@@ -470,7 +529,7 @@ running in
 
 > `require:` **no**
 > `default:` **json,txt,ini**
-> `example:` **`--input-ext=json,txt,ini,yaml`**
+> `example:` **`--input-ext=json,txt,ini,yaml,yml`**
 
 This is the file extensions that Gonsul should consider as inputs to populate our Consul. Please
 set each extension
@@ -492,6 +551,29 @@ consul k/v path, if this option is set to true gonsul will keep the file extensi
 > `example:` **`--timeout=20`**
 
 The number of seconds for the client to wait for a response from Consul
+
+### `--hook-addr`
+
+> `require:` **no**
+> `default:` **:8000**
+> `example:` **`--hook-addr=127.0.0.1:9000`**
+
+The address used by the HTTP server when running with `--strategy=HOOK`.
+
+### `--dry-run-output`
+
+> `require:` **no**
+> `default:` **summary**
+> `example:` **`--dry-run-output=json`**
+
+The output format used when running with `--strategy=DRYRUN`.
+
+- **`summary`** prints only the total operation counts. This is the default and is less noisy for
+large configuration repositories.
+- **`table`** prints the detailed operation table with batch, operation index, Consul verb and
+path. This matches the previous dry-run output style.
+- **`json`** prints a machine-readable JSON report with operation counters and operation
+type/verb/path entries. Values are intentionally omitted from this report.
 
 ## Gonsul Exit Codes
 
